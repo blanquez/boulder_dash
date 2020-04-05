@@ -35,7 +35,7 @@ public class Test {
 
 		// Game and level to play
 		int gameIdx = 11;
-		int levelIdx = 5; // level names from 0 to 4 (game_lvlN.txt).
+		int levelIdx = 9; // level names from 0 to 4 (game_lvlN.txt).
 		String gameName = games[gameIdx][1];
 		String game = games[gameIdx][0];
 		String level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
@@ -50,7 +50,8 @@ public class Test {
 
 		// 2. This plays a game in a level by the controller.
 		String controlador = "src_Blanquez_Perez_AntonioJose.Agent";
-		ArcadeMachine.runOneGame(game, level1, visuals, controlador, recordActionsFile, seed, 0);
+		//for(int i=0;i<500;i++)
+			ArcadeMachine.runOneGame(game, level1, visuals, controlador, recordActionsFile, seed, 0);
 
 
 		// 3. This replays a game from an action file previously recorded

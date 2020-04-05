@@ -23,6 +23,11 @@ public class Agent extends AbstractPlayer{
 	ArrayList<Types.ACTIONS> path;
 	ArrayList<Observation>[] objetos_inamovibles;
 	ArrayList<Vector2d> coord_inamovibles;
+	ArrayList<Observation>[] gemas;
+	ArrayList<Vector2d> coord_gemas;
+	ArrayList<Boolean> coger_gemas;
+	int cont_gemas;
+	int mejor_ind_n5;
 	
 	//Constructor
 	
@@ -30,20 +35,29 @@ public class Agent extends AbstractPlayer{
         fescala = new Vector2d(stateObs.getWorldDimension().width / stateObs.getObservationGrid().length , stateObs.getWorldDimension().height / stateObs.getObservationGrid()[0].length);   
         
         ArrayList<Observation>[] posiciones = stateObs.getPortalsPositions(stateObs.getAvatarPosition());
+        if(posiciones != null) {
+        	portal = posiciones[0].get(0).position;
+        	portal.x = Math.floor(portal.x/fescala.x);
+        	portal.y = Math.floor(portal.y/fescala.y);
+        }
         
-        portal = posiciones[0].get(0).position;
-        portal.x = Math.floor(portal.x/fescala.x);
-        portal.y = Math.floor(portal.y/fescala.y);
-        
-        
-        sol_path = portal;
+        gemas = stateObs.getResourcesPositions();
+        if(gemas != null) {
+        	coger_gemas = new ArrayList<Boolean>();
+        	for(int i=0;i<gemas[0].size();i++) coger_gemas.add(false);
+        	coord_gemas = new ArrayList<Vector2d>();
+        	for(int i=0; i<gemas[0].size();i++)
+        		coord_gemas.add(new Vector2d(Math.floor(gemas[0].get(i).position.x/fescala.x), Math.floor(gemas[0].get(i).position.y/fescala.y)));
+        }
         
         objetos_inamovibles = stateObs.getImmovablePositions();
         coord_inamovibles = new ArrayList<Vector2d>();
         for(int i=0; i<objetos_inamovibles[0].size();i++)
 			coord_inamovibles.add(new Vector2d(Math.floor(objetos_inamovibles[0].get(i).position.x/fescala.x), Math.floor(objetos_inamovibles[0].get(i).position.y/fescala.y)));
-        		
+
         hayPlan=false;
+        mejor_ind_n5 = -1;
+        path = new ArrayList<Types.ACTIONS>();
 	}
 	
 	//Clase nodo
@@ -118,7 +132,7 @@ public class Agent extends AbstractPlayer{
 		ArrayList<Node> cerrados = new ArrayList<Node>();
 		ArrayList<Node> abiertos = new ArrayList<Node>();
 		Node actual, hijo_up, hijo_down, hijo_left, hijo_right;
-		int enCerrados,enAbiertos, mejor;
+		int enCerrados = 0,enAbiertos = 0, mejor = 0;
 		double coste_aux;
 		cerrados.clear();
 		abiertos.clear();
@@ -126,13 +140,13 @@ public class Agent extends AbstractPlayer{
 		abiertos.add(posicion_actual);
 		
 		do{
-			//if(elapserTimer.exceededMaxTime() || 
-			if(abiertos.isEmpty()) return null;
+			if(elapserTimer.exceededMaxTime() || abiertos.isEmpty()) return null;
 			
 			//Buscar mejor
 			actual = new Node(abiertos.get(0).position);
 			coste_aux = abiertos.get(0).totalCost;
 			actual.totalCost = coste_aux;
+			actual.estimatedCost = calcular_distancia(actual.position);
 			actual.parent = abiertos.get(0).parent;
 			actual.comingFrom = new Vector2d(abiertos.get(0).comingFrom);
 			mejor = 0;
@@ -141,13 +155,13 @@ public class Agent extends AbstractPlayer{
 					actual = new Node(abiertos.get(i).position);
 					coste_aux = abiertos.get(i).totalCost;
 					actual.totalCost = coste_aux;
-					actual.parent = abiertos.get(i).parent;
-					actual.comingFrom = new Vector2d(abiertos.get(i).comingFrom);
+					actual.estimatedCost = calcular_distancia(actual.position);
 					mejor = i;
 				}
 			}
 			
-			actual.estimatedCost = calcular_distancia(actual.position);
+			actual.parent = abiertos.get(mejor).parent;
+			actual.comingFrom = new Vector2d(abiertos.get(mejor).comingFrom);
 			
 			abiertos.remove(mejor);
 			cerrados.add(actual);
@@ -156,16 +170,10 @@ public class Agent extends AbstractPlayer{
 			//if(actual.parent != null) System.out.print(", " + actual.comingFrom + ", " + actual.parent.position);
 			//System.out.println();
 			
-			//System.out.println("ABIERTOS");
-			//for(int i=0;i<abiertos.size();i++) System.out.println(abiertos.get(i).position + " - " + abiertos.get(i).totalCost + " " + abiertos.get(i).estimatedCost);
-			//System.out.println();
-			
 			//System.out.println("CERRADOS");
 			//for(int i=0;i<cerrados.size();i++) System.out.println(cerrados.get(i).position + " - " + cerrados.get(i).totalCost + " " + cerrados.get(i).estimatedCost);
 			//System.out.println();
 		
-			
-			coste_aux = actual.totalCost + 1;
 			
 			hijo_up = new Node(new Vector2d(actual.position.x, actual.position.y - 1));
 			hijo_down = new Node(new Vector2d(actual.position.x, actual.position.y + 1));
@@ -177,16 +185,6 @@ public class Agent extends AbstractPlayer{
 			hijo_left.parent = actual;
 			hijo_right.parent = actual;
 			
-			hijo_up.totalCost = coste_aux;
-			hijo_down.totalCost = coste_aux;
-			hijo_left.totalCost = coste_aux;
-			hijo_right.totalCost = coste_aux;
-			
-			hijo_up.estimatedCost = calcular_distancia(hijo_up.position);
-			hijo_down.estimatedCost = calcular_distancia(hijo_down.position);
-			hijo_left.estimatedCost = calcular_distancia(hijo_left.position);
-			hijo_right.estimatedCost = calcular_distancia(hijo_right.position);
-			
 			hijo_up.setMoveDir(actual);
 			hijo_down.setMoveDir(actual);
 			hijo_left.setMoveDir(actual);
@@ -196,14 +194,21 @@ public class Agent extends AbstractPlayer{
 			
 			// Hijo Arriba
 			if(!esMuro(hijo_up.position)) {
-				if(hijo_up.comingFrom != new Vector2d(0,-1)) 
-					hijo_up.totalCost = hijo_up.totalCost + 1;
+				if(actual.comingFrom.y == -1) coste_aux = actual.totalCost + 1;
+				else coste_aux = actual.totalCost + 2;
+				hijo_up.totalCost = coste_aux;
+				hijo_up.estimatedCost = calcular_distancia(hijo_up.position);
+				
+				//System.out.println("UP: " + hijo_up.position + ", " + hijo_up.totalCost + ", " + hijo_up.estimatedCost);
+				
+				//System.out.println(hijo_up.totalCost);
+				//System.out.println(hijo_up.comingFrom);
 				
 				enCerrados = buscarEnVector(hijo_up, cerrados);
 				enAbiertos = buscarEnVector(hijo_up, abiertos);
 				
 				if(enAbiertos > -1) {
-					if(hijo_up.totalCost + hijo_up.estimatedCost < cerrados.get(enAbiertos).totalCost + cerrados.get(enAbiertos).estimatedCost){
+					if(hijo_up.totalCost + hijo_up.estimatedCost < abiertos.get(enAbiertos).totalCost + abiertos.get(enAbiertos).estimatedCost){
 						abiertos.remove(enAbiertos);
 						abiertos.add(hijo_up);
 					}
@@ -219,14 +224,21 @@ public class Agent extends AbstractPlayer{
 			
 			// Hijo Abajo
 			if(!esMuro(hijo_down.position)) {
-				if(hijo_down.comingFrom != new Vector2d(0,1)) 
-					hijo_down.totalCost = hijo_down.totalCost + 1;
+				if(actual.comingFrom.y == 1) coste_aux = actual.totalCost + 1;
+				else coste_aux = actual.totalCost + 2;
+				hijo_down.totalCost = coste_aux;
+				hijo_down.estimatedCost = calcular_distancia(hijo_down.position);
+				
+				//System.out.println("DOWN: " + hijo_down.position + ", " + hijo_down.totalCost + ", " + hijo_down.estimatedCost);
+				
+				//System.out.println(hijo_down.totalCost);
+				//System.out.println(hijo_down.comingFrom);
 				
 				enCerrados = buscarEnVector(hijo_down, cerrados);
 				enAbiertos = buscarEnVector(hijo_down, abiertos);
 				
 				if(enAbiertos > -1) {
-					if(hijo_down.totalCost + hijo_down.estimatedCost < cerrados.get(enAbiertos).totalCost + cerrados.get(enAbiertos).estimatedCost){
+					if(hijo_down.totalCost + hijo_down.estimatedCost < abiertos.get(enAbiertos).totalCost + abiertos.get(enAbiertos).estimatedCost){
 						abiertos.remove(enAbiertos);
 						abiertos.add(hijo_down);
 					}
@@ -242,14 +254,21 @@ public class Agent extends AbstractPlayer{
 			
 			// Hijo izquierda
 			if(!esMuro(hijo_left.position)) {
-				if(hijo_left.comingFrom != new Vector2d(-1,0)) 
-					hijo_left.totalCost = hijo_left.totalCost + 1;
+				if(actual.comingFrom.x == -1) coste_aux = actual.totalCost + 1;
+				else coste_aux = actual.totalCost + 2;
+				hijo_left.totalCost = coste_aux;
+				hijo_left.estimatedCost = calcular_distancia(hijo_left.position);
+				
+				//System.out.println("LEFT: " + hijo_left.position + ", " + hijo_left.totalCost + ", " + hijo_left.estimatedCost);
+				
+				//System.out.println(hijo_left.totalCost);
+				//System.out.println(hijo_left.comingFrom);
 				
 				enCerrados = buscarEnVector(hijo_left, cerrados);
 				enAbiertos = buscarEnVector(hijo_left, abiertos);
 				
 				if(enAbiertos > -1) {
-					if(hijo_left.totalCost + hijo_left.estimatedCost < cerrados.get(enAbiertos).totalCost + cerrados.get(enAbiertos).estimatedCost){
+					if(hijo_left.totalCost + hijo_left.estimatedCost < abiertos.get(enAbiertos).totalCost + abiertos.get(enAbiertos).estimatedCost){
 						abiertos.remove(enAbiertos);
 						abiertos.add(hijo_left);
 					}
@@ -265,14 +284,21 @@ public class Agent extends AbstractPlayer{
 			
 			// Hijo derecha
 			if(!esMuro(hijo_right.position)) {
-				if(hijo_right.comingFrom != new Vector2d(1,0)) 
-					hijo_right.totalCost = hijo_right.totalCost + 1;
+				if(actual.comingFrom.x == 1) coste_aux = actual.totalCost + 1;
+				else coste_aux = actual.totalCost + 2;
+				hijo_right.totalCost = coste_aux;
+				hijo_right.estimatedCost = calcular_distancia(hijo_right.position);
+				
+				//System.out.println("RIGHT: " + hijo_right.position + ", " + hijo_right.totalCost + ", " + hijo_right.estimatedCost);
+				
+				//System.out.println(hijo_right.totalCost);
+				//System.out.println(hijo_right.comingFrom);
 				
 				enCerrados = buscarEnVector(hijo_right, cerrados);
 				enAbiertos = buscarEnVector(hijo_right, abiertos);
 				
 				if(enAbiertos > -1) {
-					if(hijo_right.totalCost + hijo_right.estimatedCost < cerrados.get(enAbiertos).totalCost + cerrados.get(enAbiertos).estimatedCost){
+					if(hijo_right.totalCost + hijo_right.estimatedCost < abiertos.get(enAbiertos).totalCost + abiertos.get(enAbiertos).estimatedCost){
 						abiertos.remove(enAbiertos);
 						abiertos.add(hijo_right);
 					}
@@ -285,10 +311,14 @@ public class Agent extends AbstractPlayer{
 				}
 				else abiertos.add(hijo_right);
 			}
+			//System.out.println("ABIERTOS");
+			//for(int i=0;i<abiertos.size();i++) System.out.println(abiertos.get(i).position + " - " + abiertos.get(i).totalCost + " " + abiertos.get(i).estimatedCost);
+			//System.out.println();
+			//System.out.println("-------------------------------");
 			
 		}while((actual.position.x != sol_path.x || actual.position.y != sol_path.y));
 		
-		ArrayList<Types.ACTIONS> path = new ArrayList<Types.ACTIONS>();
+		ArrayList<Types.ACTIONS> unfixed_path = new ArrayList<Types.ACTIONS>();
 		ArrayList<Types.ACTIONS> fixed_path = new ArrayList<Types.ACTIONS>();
 		Vector2d from = new Vector2d();
 		
@@ -297,32 +327,25 @@ public class Agent extends AbstractPlayer{
 		while(actual.parent != null) {
 			from = new Vector2d(actual.comingFrom);
 			if(from.x == 0) {
-				if(from.y == 1) path.add(Types.ACTIONS.ACTION_DOWN);
-				else path.add(Types.ACTIONS.ACTION_UP);
+				if(from.y == 1) unfixed_path.add(Types.ACTIONS.ACTION_DOWN);
+				else unfixed_path.add(Types.ACTIONS.ACTION_UP);
 			}else {
-				if(from.x == 1) path.add(Types.ACTIONS.ACTION_RIGHT);
-				else path.add(Types.ACTIONS.ACTION_LEFT);
+				if(from.x == 1) unfixed_path.add(Types.ACTIONS.ACTION_RIGHT);
+				else unfixed_path.add(Types.ACTIONS.ACTION_LEFT);
 			}
 			actual = actual.parent;
 		}
 		
-		Collections.reverse(path);
+		Collections.reverse(unfixed_path);
 		
-		// Hasta aqui funciona dpm
-		System.out.println("------------------------");
+		// Fixear path
 		
-		System.out.println(path);
-		
-		if(from.x != actual.comingFrom.x || from.y != actual.comingFrom.y) fixed_path.add(path.get(0));
-		fixed_path.add(path.get(0));
-		for(int i=1;i<path.size();i++) {
-			if(path.get(i).equals(path.get(i-1))) fixed_path.add(path.get(i));
-			fixed_path.add(path.get(i));
+		if(from.x != actual.comingFrom.x || from.y != actual.comingFrom.y) fixed_path.add(unfixed_path.get(0));
+		fixed_path.add(unfixed_path.get(0));
+		for(int i=1;i<unfixed_path.size();i++) {
+			if(!unfixed_path.get(i).equals(unfixed_path.get(i-1))) fixed_path.add(unfixed_path.get(i));
+			fixed_path.add(unfixed_path.get(i));
 		}
-		
-		System.out.println(fixed_path);
-		
-		System.out.println("------------------------");
 		
 		return fixed_path;
 	}
@@ -332,39 +355,75 @@ public class Agent extends AbstractPlayer{
 		
 		Vector2d avatar =  new Vector2d(stateObs.getAvatarPosition().x / fescala.x, stateObs.getAvatarPosition().y / fescala.y);
 		ArrayList<Observation>[] enemigos = stateObs.getNPCPositions();
-		ArrayList<Observation>[] gemas = stateObs.getResourcesPositions();
 		
-		if(enemigos == null && gemas == null) {				//NIVEL 1
-	        
-			Node inicial = new Node(avatar);
-			ArrayList<Types.ACTIONS> path = new ArrayList<Types.ACTIONS>();
-			
-			inicial.comingFrom = new Vector2d(stateObs.getAvatarOrientation());
-			inicial.estimatedCost = calcular_distancia(inicial.position);
+		////////NIVEL 1 /////////////////////////////////////////////////////////////////////////
+		
+		if(enemigos == null && gemas == null) {
 			
 			if(!hayPlan) {
-				path = a_estrella(inicial,stateObs,elapserTimer);
+				Node inicial = new Node(avatar);
+				
+				sol_path = portal;
+				
+				inicial.comingFrom = new Vector2d(stateObs.getAvatarOrientation());
+				inicial.estimatedCost = calcular_distancia(inicial.position);
+				
+				path.clear();
+				path.addAll(a_estrella(inicial,stateObs,elapserTimer));
+				if(path != null)hayPlan = true;
+			}
+			
+			Types.ACTIONS sig_act;
+			if(path != null) {
+				sig_act = path.get(0);
+				path.remove(0);
+			}
+			else sig_act = Types.ACTIONS.ACTION_NIL;
+			return sig_act;
+			
+		//////// NIVEL 2 /////////////////////////////////////////////////////////////////////////
+			
+		}else if(enemigos == null && gemas != null) {
+			
+			if(path.size() < 1) hayPlan = false;
+			
+			if(!hayPlan) {
+				int mejor_ind = -1;
+				sol_path = avatar;
+				double mejor = 9999;
+				for(int i=0;i<coord_gemas.size() && stateObs.getGameScore() < 20;i++) {
+					if(calcular_distancia(coord_gemas.get(i)) < mejor && !coger_gemas.get(i)) {
+						mejor = calcular_distancia(coord_gemas.get(i));
+						mejor_ind = i;
+					}
+				}
+				if(mejor_ind != -1) {
+					coger_gemas.set(mejor_ind, true);
+					sol_path = coord_gemas.get(mejor_ind);
+				}else sol_path = portal;
+				
+				
+				Node inicial = new Node(avatar);
+				
+				inicial.comingFrom = new Vector2d(stateObs.getAvatarOrientation());
+				inicial.estimatedCost = calcular_distancia(inicial.position);
+		
+				path.clear();
+				path.addAll(a_estrella(inicial,stateObs,elapserTimer));
 				if(path != null) hayPlan = true;
 			}
 			
-			if(!path.isEmpty()) {
-				Types.ACTIONS sig_act = path.get(0);
+			Types.ACTIONS sig_act;
+			if(path != null) {
+				sig_act = path.get(0);
 				path.remove(0);
-				return sig_act;
-			}else{
-				hayPlan = false;
-				return Types.ACTIONS.ACTION_NIL;
 			}
+			else sig_act = Types.ACTIONS.ACTION_NIL;
+			return sig_act;
 			
-		}else if(enemigos == null && gemas != null) {  		//NIVEL 2
+		//////// NIVEL 3 /////////////////////////////////////////////////////////////////////////
 			
-			System.out.println("NIVEL 2");
-			
-			
-			
-			return Types.ACTIONS.ACTION_NIL;
-			
-		}else if(enemigos[0].size() == 1 && gemas == null) {   //NIVEL 3
+		}else if(enemigos[0].size() == 1 && gemas == null) {
 			
 			Vector2d posicion_enemigo = new Vector2d(enemigos[0].get(0).position.x / fescala.x, enemigos[0].get(0).position.y / fescala.y);
 			Vector2d posicion_aux = new Vector2d(avatar);
@@ -421,7 +480,10 @@ public class Agent extends AbstractPlayer{
 				return Types.ACTIONS.ACTION_NIL;
 			}
 			
-		}else if(enemigos[0].size() > 1 && gemas == null ) {	//NIVEL 4
+		//////// NIVEL 4 /////////////////////////////////////////////////////////////////////////
+			
+		}else if(enemigos[0].size() > 1 && gemas == null ) {
+			
 			Vector2d posicion_enemigo1 = new Vector2d(enemigos[0].get(0).position.x / fescala.x, enemigos[0].get(0).position.y / fescala.y);
 			Vector2d posicion_enemigo2 = new Vector2d(enemigos[0].get(1).position.x / fescala.x, enemigos[0].get(1).position.y / fescala.y);
 			Vector2d posicion_aux = new Vector2d(avatar);
@@ -478,13 +540,106 @@ public class Agent extends AbstractPlayer{
 				return Types.ACTIONS.ACTION_NIL;
 			}
 			
-		}else {												//NIVEL 5
+		//////// NIVEL 5 /////////////////////////////////////////////////////////////////////////	
 			
-			System.out.println("NIVEL 5");
+		}else {
+			Vector2d posicion_enemigo = new Vector2d(enemigos[0].get(0).position.x / fescala.x, enemigos[0].get(0).position.y / fescala.y);
+			Vector2d posicion_aux = new Vector2d(avatar);
+			ArrayList<Double> movimientos = new ArrayList<Double>();
 			
+			if(Math.abs(posicion_enemigo.x-avatar.x)+Math.abs(posicion_enemigo.y-avatar.y) < 5) {
+				hayPlan = false;
+				movimientos.clear();
+				
+				//Mirar a la derecha
+				posicion_aux.x = avatar.x + 1;
+				posicion_aux.y = avatar.y;
+				
+				if(esMuro(posicion_aux)) movimientos.add(-1.0);
+				else movimientos.add(Math.abs(posicion_enemigo.x-posicion_aux.x)+Math.abs(posicion_enemigo.y-posicion_aux.y));
+				
+				//Mirar abajo
+				posicion_aux.x = avatar.x;
+				posicion_aux.y = avatar.y + 1;
+				
+				if(esMuro(posicion_aux)) movimientos.add(-1.0);
+				else movimientos.add(Math.abs(posicion_enemigo.x-posicion_aux.x)+Math.abs(posicion_enemigo.y-posicion_aux.y));
+				
+				//Mirar a la izquierda
+				posicion_aux.x = avatar.x - 1;
+				posicion_aux.y = avatar.y;
+				
+				if(esMuro(posicion_aux)) movimientos.add(-1.0);
+				else movimientos.add(Math.abs(posicion_enemigo.x-posicion_aux.x)+Math.abs(posicion_enemigo.y-posicion_aux.y));
+				
+				//Mirar arriba
+				posicion_aux.x = avatar.x;
+				posicion_aux.y = avatar.y - 1;
+				
+				if(esMuro(posicion_aux)) movimientos.add(-1.0);
+				else movimientos.add(Math.abs(posicion_enemigo.x-posicion_aux.x)+Math.abs(posicion_enemigo.y-posicion_aux.y));
+				
+				int ind_maximo = 0;
+				double maximo = movimientos.get(0);
+				for(int i=1;i<movimientos.size();i++) {
+					if(movimientos.get(i) > maximo) {
+						maximo = movimientos.get(i);
+						ind_maximo = i;
+					}
+				}
+							
+				switch(ind_maximo) {
+				case 0:
+					return Types.ACTIONS.ACTION_RIGHT;
+				case 1:
+					return Types.ACTIONS.ACTION_DOWN;
+				case 2:
+					return Types.ACTIONS.ACTION_LEFT;
+				case 3:
+					return Types.ACTIONS.ACTION_UP;
+				default:
+					return Types.ACTIONS.ACTION_NIL;
+				}
+			}else {
+				
+				if(mejor_ind_n5 != -1 && avatar.x == coord_gemas.get(mejor_ind_n5).x && avatar.y == coord_gemas.get(mejor_ind_n5).y ) {
+					coger_gemas.set(mejor_ind_n5, true);
+					hayPlan = false;
+				}
+				
+				if(!hayPlan) {
+					path.clear();
+					mejor_ind_n5 = -1;
+					sol_path = avatar;
+					double mejor = 9999;
+					for(int i=0;i<coord_gemas.size() && stateObs.getGameScore() < 20;i++) {
+						if(calcular_distancia(coord_gemas.get(i)) < mejor && !coger_gemas.get(i)) {
+							mejor = calcular_distancia(coord_gemas.get(i));
+							mejor_ind_n5 = i;
+						}
+					}
+					if(mejor_ind_n5 != -1) sol_path = coord_gemas.get(mejor_ind_n5);
+					else sol_path = portal;
+					
+					
+					Node inicial = new Node(avatar);
+					
+					inicial.comingFrom = new Vector2d(stateObs.getAvatarOrientation());
+					inicial.estimatedCost = calcular_distancia(inicial.position);
 			
-			
-			return Types.ACTIONS.ACTION_NIL;
+					path.addAll(a_estrella(inicial,stateObs,elapserTimer));
+					if(path != null) hayPlan = true;
+				}
+				
+				Types.ACTIONS sig_act;
+				if(path.size() >= 1) {
+					sig_act = path.get(0);
+					path.remove(0);
+				}else{
+					sig_act = Types.ACTIONS.ACTION_NIL;
+				}
+				return sig_act;
+			}
 			
 		}
 	}
